@@ -96,8 +96,26 @@ export async function GET(
 
     const isAdmin = !!adminRes.data;
 
-    if (!isAdmin && photo.owner_id !== userId) {
-      return new Response("Forbidden (not owner/admin)", { status: 403 });
+    // IMPORTANT: gallery rule for thumbnails
+    // - admin can always view
+    // - non-admin can view ANY thumbnail only after unlock
+    if (!isAdmin) {
+      const eventRes = await sb
+        .from("events")
+        .select("unlocks_at")
+        .eq("id", photo.event_id)
+        .single();
+
+      if (eventRes.error || !eventRes.data) {
+        return new Response("Event not found", { status: 404 });
+      }
+
+      const unlocked =
+        new Date(eventRes.data.unlocks_at).getTime() <= Date.now();
+
+      if (!unlocked) {
+        return new Response("Gallery locked", { status: 403 });
+      }
     }
 
     const thumbKey = photo.drive_thumb_file_id;
