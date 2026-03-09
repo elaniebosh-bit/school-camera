@@ -60,6 +60,28 @@ export default function HomePage() {
     return () => data.subscription.unsubscribe();
   }, []);
 
+  async function sendMagicLink() {
+    if (!email.trim()) return;
+
+    setSending(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) {
+        alert(error.message);
+      } else {
+        alert("Magic link sent. Check your email.");
+      }
+    } finally {
+      setSending(false);
+    }
+  }
+
   if (!session) {
     return (
       <div style={{ padding: 20, maxWidth: 520, margin: "0 auto" }}>
@@ -82,25 +104,7 @@ export default function HomePage() {
 
         <button
           disabled={sending || !email.trim()}
-          onClick={async () => {
-            setSending(true);
-            try {
-              const { error } = await supabase.auth.signInWithOtp({
-                email: email.trim(),
-                options: {
-                  emailRedirectTo: `${window.location.origin}/auth/callback`,
-                },
-              });
-
-              if (error) {
-                alert(error.message);
-              } else {
-                alert("Magic link sent. Check your email.");
-              }
-            } finally {
-              setSending(false);
-            }
-          }}
+          onClick={sendMagicLink}
           style={{ padding: "10px 12px", borderRadius: 10 }}
         >
           {sending ? "Sending…" : "Send magic link"}
@@ -113,29 +117,60 @@ export default function HomePage() {
     <div style={{ padding: 20, maxWidth: 800, margin: "0 auto" }}>
       <h1>Active events</h1>
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-        {isAdmin && (
-          <a
-            href="/admin"
-            style={{
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid #ccc",
-              textDecoration: "none",
-            }}
-          >
-            Admin panel
-          </a>
-        )}
+      <div
+        style={{
+          border: "1px solid #ddd",
+          borderRadius: 14,
+          padding: 14,
+          marginBottom: 16,
+        }}
+      >
+        <div style={{ marginBottom: 10 }}>
+          Signed in as: <b>{session.user.email}</b>
+        </div>
 
-        <button
-          onClick={async () => {
-            await supabase.auth.signOut();
-          }}
-          style={{ padding: "10px 12px", borderRadius: 10 }}
-        >
-          Sign out
-        </button>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {isAdmin && (
+            <a
+              href="/admin"
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #ccc",
+                textDecoration: "none",
+                color: "inherit",
+              }}
+            >
+              Admin panel
+            </a>
+          )}
+
+          <button
+            onClick={async () => {
+              await supabase.auth.signOut();
+            }}
+            style={{ padding: "10px 12px", borderRadius: 10 }}
+          >
+            Sign out
+          </button>
+
+          <button
+            onClick={async () => {
+              await supabase.auth.signOut();
+              setEmail("");
+              setEvents([]);
+              setIsAdmin(false);
+            }}
+            style={{ padding: "10px 12px", borderRadius: 10 }}
+          >
+            Use different email
+          </button>
+        </div>
+
+        <p style={{ marginTop: 10, opacity: 0.75, fontSize: 14 }}>
+          Come back later in the same browser and you should usually still be signed in.
+          If not, sign out and request a new magic link.
+        </p>
       </div>
 
       {events.length === 0 ? (
