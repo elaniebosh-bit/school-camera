@@ -9,84 +9,99 @@ type EventRow = {
   name: string;
   starts_at: string;
   unlocks_at: string;
+  active: boolean;
 };
 
-export default function Home() {
+export default function HomePage() {
   const [session, setSession] = useState<Session | null>(null);
   const [email, setEmail] = useState("");
-  const [events, setEvents] = useState<EventRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [events, setEvents] = useState<EventRow[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  async function refreshSignedInData(sess: Session) {
+    const adminRes = await supabase
+      .from("admins")
+      .select("user_id")
+      .eq("user_id", sess.user.id)
+      .maybeSingle();
+
+    setIsAdmin(!adminRes.error && !!adminRes.data);
+
+    const evRes = await supabase
+      .from("events")
+      .select("id,name,starts_at,unlocks_at,active")
+      .eq("active", true)
+      .order("starts_at", { ascending: true });
+
+    if (!evRes.error) {
+      setEvents((evRes.data ?? []) as EventRow[]);
+    }
+  }
 
   useEffect(() => {
-    let mounted = true;
-
     supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      setSession(data.session ?? null);
-      setLoading(false);
+      const sess = data.session ?? null;
+      setSession(sess);
+      if (sess) refreshSignedInData(sess);
     });
 
     const { data } = supabase.auth.onAuthStateChange((_event, sess) => {
-      setSession(sess ?? null);
+      const s = sess ?? null;
+      setSession(s);
+      if (s) {
+        refreshSignedInData(s);
+      } else {
+        setEvents([]);
+        setIsAdmin(false);
+      }
     });
 
-    return () => {
-      mounted = false;
-      data.subscription.unsubscribe();
-    };
+    return () => data.subscription.unsubscribe();
   }, []);
-
-  useEffect(() => {
-    (async () => {
-      if (!session) return;
-
-      const { data, error } = await supabase
-        .from("events")
-        .select("id,name,starts_at,unlocks_at")
-        .order("starts_at", { ascending: false });
-
-      if (!error) setEvents((data ?? []) as EventRow[]);
-      // If you get an RLS error here, it usually means RLS/policies aren’t applied yet.
-    })();
-  }, [session]);
-
-  if (loading) return <div style={{ padding: 20 }}>Loading…</div>;
 
   if (!session) {
     return (
       <div style={{ padding: 20, maxWidth: 520, margin: "0 auto" }}>
-        <h1>School Camera</h1>
-        <p>Sign in to join an event.</p>
+        <h1>Volkie Moments</h1>
+        <p>Sign in with your email to access event cameras and galleries.</p>
 
         <input
+          type="email"
+          placeholder="you@example.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email address"
-          style={{ width: "100%", padding: 12, borderRadius: 10 }}
-          autoComplete="email"
+          style={{
+            width: "100%",
+            padding: 12,
+            borderRadius: 10,
+            border: "1px solid #ccc",
+            marginBottom: 10,
+          }}
         />
 
         <button
+          disabled={sending || !email.trim()}
           onClick={async () => {
-            const trimmed = email.trim();
-            if (!trimmed.includes("@")) return;
-
             setSending(true);
             try {
               const { error } = await supabase.auth.signInWithOtp({
-                email: trimmed,
-                options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+                email: email.trim(),
+                options: {
+                  emailRedirectTo: `${window.location.origin}/auth/callback`,
+                },
               });
 
-              if (error) alert(error.message);
-              else alert("Magic link sent! Check your email.");
+              if (error) {
+                alert(error.message);
+              } else {
+                alert("Magic link sent. Check your email.");
+              }
             } finally {
               setSending(false);
             }
           }}
-          style={{ width: "100%", padding: 12, borderRadius: 10, marginTop: 10 }}
-          disabled={sending || !email.includes("@")}
+          style={{ padding: "10px 12px", borderRadius: 10 }}
         >
           {sending ? "Sending…" : "Send magic link"}
         </button>
@@ -95,25 +110,44 @@ export default function Home() {
   }
 
   return (
-    <div style={{ padding: 20, maxWidth: 720, margin: "0 auto" }}>
+    <div style={{ padding: 20, maxWidth: 800, margin: "0 auto" }}>
       <h1>Active events</h1>
 
-      <button
-        onClick={() => supabase.auth.signOut()}
-        style={{ padding: "10px 12px", borderRadius: 10, marginBottom: 10 }}
-      >
-        Sign out
-      </button>
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        {isAdmin && (
+          <a
+            href="/admin"
+            style={{
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              textDecoration: "none",
+            }}
+          >
+            Admin panel
+          </a>
+        )}
+
+        <button
+          onClick={async () => {
+            await supabase.auth.signOut();
+          }}
+          style={{ padding: "10px 12px", borderRadius: 10 }}
+        >
+          Sign out
+        </button>
+      </div>
 
       {events.length === 0 ? (
         <p>No active events right now.</p>
       ) : (
-        <div style={{ display: "grid", gap: 10 }}>
+        <div style={{ display: "grid", gap: 12 }}>
           {events.map((ev) => (
             <a
               key={ev.id}
               href={`/event/${ev.id}`}
               style={{
+                display: "block",
                 border: "1px solid #ddd",
                 borderRadius: 14,
                 padding: 14,
@@ -121,12 +155,12 @@ export default function Home() {
                 color: "inherit",
               }}
             >
-              <div style={{ fontWeight: 700 }}>{ev.name}</div>
+              <div style={{ fontWeight: 800, fontSize: 18 }}>{ev.name}</div>
               <div style={{ opacity: 0.8 }}>
                 Starts: {new Date(ev.starts_at).toLocaleString()}
               </div>
               <div style={{ opacity: 0.8 }}>
-                Unlocks: {new Date(ev.unlocks_at).toLocaleString()}
+                Gallery opens: {new Date(ev.unlocks_at).toLocaleString()}
               </div>
             </a>
           ))}
