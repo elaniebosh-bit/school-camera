@@ -1,35 +1,47 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [message, setMessage] = useState("Signing you in…");
 
   useEffect(() => {
-    let mounted = true;
+    let active = true;
 
-    async function finishAuth() {
+    async function finishLogin() {
       try {
-        // This lets Supabase process the magic-link session in the URL
-        await supabase.auth.getSession();
+        const code = searchParams.get("code");
 
-        if (!mounted) return;
+        if (!code) {
+          setMessage("Login link is missing a code. Please request a new magic link.");
+          return;
+        }
+
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+        if (error) {
+          setMessage(`Login failed: ${error.message}`);
+          return;
+        }
+
+        if (!active) return;
+
         router.replace("/");
-      } catch (e) {
-        console.error("Auth callback error:", e);
-        if (!mounted) return;
-        router.replace("/");
+      } catch (e: any) {
+        setMessage(`Login failed: ${e?.message ?? "Unknown error"}`);
       }
     }
 
-    finishAuth();
+    finishLogin();
 
     return () => {
-      mounted = false;
+      active = false;
     };
-  }, [router]);
+  }, [router, searchParams]);
 
-  return <div style={{ padding: 20 }}>Signing you in…</div>;
+  return <div style={{ padding: 20 }}>{message}</div>;
 }
