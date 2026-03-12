@@ -14,10 +14,12 @@ type EventRow = {
 
 export default function HomePage() {
   const [session, setSession] = useState<Session | null>(null);
-  const [email, setEmail] = useState("");
-  const [sending, setSending] = useState(false);
   const [events, setEvents] = useState<EventRow[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
+
+  const [email, setEmail] = useState("");
+  const [sendingMagic, setSendingMagic] = useState(false);
+  const [startingAnon, setStartingAnon] = useState(false);
 
   async function refreshSignedInData(sess: Session) {
     const adminRes = await supabase
@@ -49,6 +51,7 @@ export default function HomePage() {
     const { data } = supabase.auth.onAuthStateChange((_event, sess) => {
       const s = sess ?? null;
       setSession(s);
+
       if (s) {
         refreshSignedInData(s);
       } else {
@@ -60,10 +63,22 @@ export default function HomePage() {
     return () => data.subscription.unsubscribe();
   }, []);
 
-  async function sendMagicLink() {
+  async function continueAnonymously() {
+    setStartingAnon(true);
+    try {
+      const { error } = await supabase.auth.signInAnonymously();
+      if (error) {
+        alert(error.message);
+      }
+    } finally {
+      setStartingAnon(false);
+    }
+  }
+
+  async function sendAdminMagicLink() {
     if (!email.trim()) return;
 
-    setSending(true);
+    setSendingMagic(true);
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email: email.trim(),
@@ -75,43 +90,88 @@ export default function HomePage() {
       if (error) {
         alert(error.message);
       } else {
-        alert("Magic link sent. Check your email.");
+        alert("Admin magic link sent. Check your email.");
       }
     } finally {
-      setSending(false);
+      setSendingMagic(false);
     }
   }
 
   if (!session) {
     return (
-      <div style={{ padding: 20, maxWidth: 520, margin: "0 auto" }}>
+      <div style={{ padding: 20, maxWidth: 700, margin: "0 auto" }}>
         <h1>Volkie Moments</h1>
-        <p>Sign in with your email to access event cameras and galleries.</p>
+        <p>
+          Capture the event with a disposable-camera style gallery.
+        </p>
 
-        <input
-          type="email"
-          placeholder="you@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+        <div
           style={{
-            width: "100%",
-            padding: 12,
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            marginBottom: 10,
+            border: "1px solid #ddd",
+            borderRadius: 14,
+            padding: 16,
+            marginBottom: 20,
           }}
-        />
-
-        <button
-          disabled={sending || !email.trim()}
-          onClick={sendMagicLink}
-          style={{ padding: "10px 12px", borderRadius: 10 }}
         >
-          {sending ? "Sending…" : "Send magic link"}
-        </button>
+          <h2 style={{ marginTop: 0 }}>Attendees</h2>
+          <p style={{ marginTop: 0 }}>
+            Use this on the same phone/browser now and later to access your gallery.
+          </p>
+
+          <button
+            disabled={startingAnon}
+            onClick={continueAnonymously}
+            style={{ padding: "10px 12px", borderRadius: 10 }}
+          >
+            {startingAnon ? "Starting…" : "Continue to event"}
+          </button>
+
+          <p style={{ marginTop: 12, opacity: 0.75, fontSize: 14 }}>
+            Important: anonymous access is tied to this browser. If you sign out,
+            clear browser data, or use a different phone/browser later, you may lose
+            access to your personal download rights.
+          </p>
+        </div>
+
+        <div
+          style={{
+            border: "1px solid #ddd",
+            borderRadius: 14,
+            padding: 16,
+          }}
+        >
+          <h2 style={{ marginTop: 0 }}>Admins</h2>
+          <p style={{ marginTop: 0 }}>
+            Admins can sign in with email for full access.
+          </p>
+
+          <input
+            type="email"
+            placeholder="admin@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={{
+              width: "100%",
+              padding: 12,
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              marginBottom: 10,
+            }}
+          />
+
+          <button
+            disabled={sendingMagic || !email.trim()}
+            onClick={sendAdminMagicLink}
+            style={{ padding: "10px 12px", borderRadius: 10 }}
+          >
+            {sendingMagic ? "Sending…" : "Send admin magic link"}
+          </button>
+        </div>
       </div>
     );
   }
+
+  const isAnonymous = !!session.user.is_anonymous;
 
   return (
     <div style={{ padding: 20, maxWidth: 800, margin: "0 auto" }}>
@@ -126,8 +186,20 @@ export default function HomePage() {
         }}
       >
         <div style={{ marginBottom: 10 }}>
-          Signed in as: <b>{session.user.email}</b>
+          Signed in as:{" "}
+          <b>
+            {isAnonymous
+              ? "Anonymous attendee"
+              : session.user.email ?? "User"}
+          </b>
         </div>
+
+        {isAnonymous ? (
+          <p style={{ marginTop: 0, opacity: 0.75, fontSize: 14 }}>
+            Stay on this same device/browser if you want to come back later for the
+            unlocked gallery and your own downloads.
+          </p>
+        ) : null}
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {isAdmin && (
@@ -153,24 +225,7 @@ export default function HomePage() {
           >
             Sign out
           </button>
-
-          <button
-            onClick={async () => {
-              await supabase.auth.signOut();
-              setEmail("");
-              setEvents([]);
-              setIsAdmin(false);
-            }}
-            style={{ padding: "10px 12px", borderRadius: 10 }}
-          >
-            Use different email
-          </button>
         </div>
-
-        <p style={{ marginTop: 10, opacity: 0.75, fontSize: 14 }}>
-          Come back later in the same browser and you should usually still be signed in.
-          If not, sign out and request a new magic link.
-        </p>
       </div>
 
       {events.length === 0 ? (

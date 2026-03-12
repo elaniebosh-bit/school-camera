@@ -29,7 +29,6 @@ export default function AuthCallbackPage() {
         }
 
         if (!active) return;
-
         router.replace("/");
       } catch (e: any) {
         setMessage(`Login failed: ${e?.message ?? "Unknown error"}`);
